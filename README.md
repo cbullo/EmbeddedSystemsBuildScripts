@@ -21,12 +21,13 @@ http_archive(
 ```
 Where `<version>` is the version number of the scripts, that you want to use.
 
+### Documentation
 For more detailed documentation see [docs](https://embeddedsystemsbuildscripts.readthedocs.io/en/latest/)
 
 ### AvrToolchain
 To be able to build for avr microcontrollers you add the following lines to your `WORKSPACE`:
 ```python
-load("@EmbeddedSystemsBuildScripts//AvrToolchain:avr.bzl", "avr_toolchain")
+load("@EmbeddedSystemsBuildScripts//Toolchains/Avr:avr.bzl", "avr_toolchain")
 
 avr_toolchain()
 ```
@@ -34,7 +35,7 @@ This will generate an external Workspace, containing a toolchain definition for 
 
 Use
 ```bash
-$ bazel query 'kind(constraint_setting, @AvrToolchain//platforms/...)'
+$ bazel query 'kind(constraint_setting, @Toolchains/Avr//platforms/...)'
 ```
 to retrieve a list of all defined constraint settings. These are dimensions from which you can choose values to define your own platform.
 Note that the constraint_setting `board_id` is used by the department to refer to development boards.
@@ -53,7 +54,7 @@ platform(
         "@AvrToolchain//platforms/cpu_frequency:16mhz",
         "@AvrToolchain//platforms/misc:hardware_usart",
     ],
-    parents = ["@AvrToolchain//platforms:avr_common"]
+    parents = [":avr_common"],
 )
 ```
 The `mcu` constraint is mandatory and used internally to choose the correct toolchain configuration.
@@ -76,6 +77,27 @@ To treat warnings that most probably come from programming errors - e.g. missing
 --features=treat_warnings_as_errors
 ```
 
+By default, we compile with the feature called `gnu99`, that adds `--std=gnu99` to the build command. However, if you want to build with avr-g++ `-std=gnu99` is an invalid flag and can be disabled by applying the following flag to the bazel call
+```bash
+--feature=-gnu99
+```
+### Arm Toolchain
+
+To be able to build for arm cpu's you add the following lines to your `WORKSPACE`:
+```python
+load("@EmbeddedSystemsBuildScripts//Toolchains/Arm:arm.bzl", "arm_toolchain")
+
+avr_toolchain()
+```
+And the following lines to your projects `BUILD` file:
+```python
+load("@ArmToolchain//:helpers.bzl", "generate_stm_upload_script")
+
+generate_stm_upload_script(name = Name)
+```
+
+Additional information can be derived from the `AvrToolchain` section above.
+
 ### Macros
 #### Embedded Builds
 While there is no difference in how native and embedded cc_* targets are defined, actually being able to program a device involves more steps.
@@ -94,10 +116,42 @@ default_embedded_binary(
 )
 ```
 
-The above call will create hex file with the target name `"main"`, an elf file with the name `"_mainELF"` and an upload script that receives the hex file as it's argument named `"_mainUpload"`.
+The above call will create hex file with the target name `"main"`, an elf file with the name `"main_ELF"` and an upload script that receives the hex file as it's argument named `"main_upload"`.
 
 Additionally the `cpu_frequency_flag` macro is loaded. It simply resolves the applied cpu frequency constraint to the matching symbol definition flag, accessible in the source files
 by the c macro `F_CPU`.
+
+Additional `copts` can be added by concatenating `cpu_frequency_flag()` with a list of the desired `copts`, i.e. `copts = cpu_frequency_flag() + ["-DDEBUG=1"]`.
+
+
+Since `v.1.0`, the upload_script may need to be specified as an additional argument if you're using the `default_embedded_binary` macro. Possible values for this parameter are:
+
+```
+upload_script = "@AvrToolchain//:dfu_upload_script"
+
+or
+
+upload_script = "@AvrToolchain//:avrdude_upload_script"
+```
+
+Building for an ARM target device can be done by using the `default_arm_binary` macro.
+
+```python
+load("@ArmToolchain//:helpers.bzl", "default_arm_binary", "generate_stm_upload_script")
+
+generate_stm_upload_script(name = arm_upload)
+
+default_arm_binary(
+    name = "main",
+    srcs = ["main.c"],
+    deps = [":MyLib"],
+    uploader = "arm_upload",
+    additional_linker_inputs = ["MY_LINKER_FILE.ld"]
+    linkopts = ["-T MY_LINKER_FILE.ld"]
+)
+```
+
+Please be aware, that the upload script needs to be created manually beforehand, and passed into the `default_arm_binary` macro as a parameter.
 
 #### Unity
 ###### unity_test
@@ -148,3 +202,9 @@ In order to use the mocked header file instead of the original, the include dire
 ```c
 #include "lib/MockFunctions.h"
 ```
+
+### Known Issues
+
+#### Supported avrdude programmers
+
+`avrdude` works with different programmers for different boards. Amongst other things, they provide the pin configuration. For more information run `man avrdude` in your shell. Currently our build scripts only support the programmers `arduino`, which is used for the ArduinoUno and `wiring`, used for the ArduinoMega.
