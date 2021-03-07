@@ -34,7 +34,7 @@ def generate_stm_upload_script(name):
         name=name,
         outs=[name + "_stm_upload_script.sh"],
         cmd="""
-        echo "st-flash erase; st-flash write \$$2 \$$3;" > $@
+        echo "st-flash erase; st-flash write $$2 $$3;" > $@
         """,
     )
 
